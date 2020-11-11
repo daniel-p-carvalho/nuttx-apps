@@ -1,0 +1,10 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config INDUSTRY_DNP3_LIB
+	bool "DNP3 - Distributed Network Protocol"
+	default n
+	---help---
+		Enable or disable the DNP3 Library

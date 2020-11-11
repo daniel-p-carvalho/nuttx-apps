@@ -1,0 +1,205 @@
+/*****************************************************************************
+ * apps/dnp3/dnp_link_layer.c
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.  The
+ * ASF licenses this file to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ *****************************************************************************/
+
+/*****************************************************************************
+ * Included Files
+ *****************************************************************************/
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#include "industry/dnp3/dnp_link_layer.h"
+
+/*****************************************************************************
+ * Pre-processor Definitions
+ *****************************************************************************/
+
+#ifdef CONFIG_DNP_MASTER
+#  define IS_MASTER true
+#else
+#  define IS_MASTER false
+#endif
+
+#ifdef CONFIG_DNP_USE_CONFIRMATION
+#  define USE_CONFIRMATION true
+#else
+#  define USE_CONFIRMATION false
+#endif
+
+#ifndef CONFIG_DNP_RETRIES
+#  define CONFIG_DNP_RETRIES 0
+#endif
+
+#ifndef CONFIG_DNP_TIMEOUT_MS
+#  define CONFIG_DNP_TIMEOUT_MS 1000
+#endif
+
+#ifndef CONFIG_DNP_LOCAL_ADDR
+#  define CONFIG_DNP_LOCAL_ADDR 1024
+#endif
+
+#ifndef CONFIG_DNP_REMOTE_ADDR
+#  define CONFIG_DNP_REMOTE_ADDR 1
+#endif
+
+/*****************************************************************************
+ * Private Data
+ *****************************************************************************/
+
+static struct dnp_ll_config_s ll_config =
+{
+  .is_master        = IS_MASTER,
+  .use_confirmation = USE_CONFIRMATION,
+  .retries          = CONFIG_DNP_RETRIES,
+  .timeout          = CONFIG_DNP_TIMEOUT_MS,
+  .local_addr       = CONFIG_DNP_LOCAL_ADDR,
+  .remote_addr      = CONFIG_DNP_REMOTE_ADDR
+};
+
+/*****************************************************************************
+ * Private Function Prototypes
+ *****************************************************************************/
+
+static void reset_nfcb(FAR struct dnp_link_layer_s *ll);
+static void toggle_nfcb(FAR struct dnp_link_layer_s *ll);
+static bool next_nfcb(FAR struct dnp_link_layer_s *ll);
+static void reset_efcb(FAR struct dnp_link_layer_s *ll);
+static void toggle_efcb(FAR struct dnp_link_layer_s *ll);
+static bool next_efcb(FAR struct dnp_link_layer_s *ll);
+
+static bool validate(FAR struct dnp_link_layer_s *ll, bool is_master,
+                     uint16_t src, uint16_t dest);
+
+/*****************************************************************************
+ * Private Functions
+ *****************************************************************************/
+
+/*****************************************************************************
+ * Name: reset_nfcb
+ *****************************************************************************/
+
+static void reset_nfcb(FAR struct dnp_link_layer_s *ll)
+{
+  ll->nfcb = true;
+}
+
+/*****************************************************************************
+ * Name: toggle_nfcb
+ *****************************************************************************/
+
+static void toggle_nfcb(FAR struct dnp_link_layer_s *ll)
+{
+  ll->nfcb = !ll->nfcb;
+}
+
+/*****************************************************************************
+ * Name: next_nfcb
+ *****************************************************************************/
+
+static bool next_nfcb(FAR struct dnp_link_layer_s *ll)
+{
+  return ll->nfcb;
+}
+
+/*****************************************************************************
+ * Name: reset_efcb
+ *****************************************************************************/
+
+static void reset_efcb(FAR struct dnp_link_layer_s *ll)
+{
+  ll->efcb = true;
+  ll->link_is_reset = true;
+}
+
+/*****************************************************************************
+ * Name: toggle_efcb
+ *****************************************************************************/
+
+static void toggle_efcb(FAR struct dnp_link_layer_s *ll)
+{
+  ll->efcb = !ll->efcb;
+}
+
+/*****************************************************************************
+ * Name: next_efcb
+ *****************************************************************************/
+
+static bool next_efcb(FAR struct dnp_link_layer_s *ll)
+{
+  return ll->efcb;
+}
+
+/*****************************************************************************
+ * Name: validate
+ *****************************************************************************/
+
+static bool validate(FAR struct dnp_link_layer_s *ll, bool is_master,
+                     uint16_t src, uint16_t dest)
+{
+  if (is_master == ll->ll_config->is_master)
+    {
+      /* Master frame received from master or Slave frame received from
+       * slave
+       */
+
+      return false;
+    }
+
+  if (src != ll->ll_config->remote_addr)
+    {
+      /* Frame received from unknown source */
+
+      return false;
+    }
+
+  if (src != ll->ll_config->local_addr)
+    {
+      /* Frame received for unknown destination */
+
+      return false;
+    }
+
+  return true;
+}
+
+/*****************************************************************************
+ * Public Functions
+ *****************************************************************************/
+
+void reset_link_states(FAR struct dnp_link_layer_s *ll, bool is_master,
+                       uint16_t src, uint16_t dest)
+{
+  /* After completing the reset link states transaction, a secondary shall
+   * expect the FCB bit to be 1 in the next message with the FCV bit set.
+   * Similarly, after completing the reset link states transaction, a primary
+   * station shall set the FCB bit to 1 in the next message it sends with the
+   * FCV bit set
+   */
+
+  if (validate(ll, is_master, dest, src))
+    {
+      /* ISSUE - The FCV bit must be checked. According Table 51 the NFCB bit
+       *         is reseted only if FCV bit is 0
+       */
+
+      reset_efcb(ll);
+      //TODO: SEND ACK
+    }
+}
