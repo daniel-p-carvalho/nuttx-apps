@@ -1,5 +1,5 @@
 /*****************************************************************************
- * apps/include/dnp3/dnp_ll_frame.h
+ * apps/include/dnp3/dnp_crc16.h
  *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,66 +18,18 @@
  *
  *****************************************************************************/
 
-#ifndef __DNP_LL_FRAME_H
-#define __DNP_LL_FRAME_H
+#ifndef __DNP_CRC16_H
+#define __DNP_CRC16_H
 
 /*****************************************************************************
  * Included Files
  *****************************************************************************/
 
 #include <stdint.h>
-#include <stdbool.h>
-
-#include "industry/dnp3/dnp_ll_constants.h"
-#include "industry/dnp3/dnp_ll_header.h"
-
-/*****************************************************************************
- * Pre-processor Definitions
- *****************************************************************************/
 
 /*****************************************************************************
  * Public Types
  *****************************************************************************/
-
-struct ll_frame_s;
-struct ll_frame_ops_s
-{
-  uint32_t (*ll_frame_size)(uint32_t data_len);
-
-  /* Functions for formatting outgoing frames - Sec to Pri */
-
-  void (*format_ack)(FAR struct ll_frame_s *frame, bool is_master,
-                     bool is_rcv_buff_full, uint16_t dest, uint16_t src);
-
-  void (*format_nack)(FAR struct ll_frame_s *frame, bool is_master,
-                      bool is_rcv_buff_full, uint16_t dest, uint16_t src);
-
-  void (*format_linkstatus)(FAR struct ll_frame_s *frame, bool is_master,
-                      bool is_rcv_buff_full, uint16_t dest, uint16_t src);
-
-  void (*format_notsupported)(FAR struct ll_frame_s *frame,
-                              bool is_master, bool is_rcv_buff_full,
-                              uint16_t dest, uint16_t src);
-
-  /* Functions for formatting outgoing frames- Pri to Sec */
-
-  void (*format_reset_linkstates)(FAR struct ll_frame_s *frame,
-                      bool is_master, uint16_t dest, uint16_t src);
-
-  void (*format_test_linkstates)(FAR struct ll_frame_s *frame,
-                      bool is_master, bool fcb, uint16_t dest, uint16_t src);
-
-  void (*format_confirmed_userdata)(FAR struct ll_frame_s *frame,
-                      bool is_master, bool fcb, uint16_t dest, uint16_t src,
-                      uint8_t *data, uint32_t data_len);
-
-  void (*format_unconfirmed_userdata)(FAR struct ll_frame_s *frame,
-                      bool is_master, uint16_t dest, uint16_t src,
-                      uint8_t *data, uint32_t data_len);
-
-  void (*format_request_linkstatus)(FAR struct ll_frame_s *frame,
-                      bool is_master, uint16_t dest, uint16_t src);
-};
 
 /*****************************************************************************
  * Public Function Prototypes
@@ -93,52 +45,58 @@ extern "C"
 #endif
 
 /*****************************************************************************
- * Name: ll_frame_new
+ * Name: dnp_crc16_calc
  *
  * Description:
- *
+ *   Calculates the two octet CRC for the data passed to it.
  *
  * Input Parameters:
- *
+ *   *buff * - pointer to data buffer
+ *   len     - length of data
  *
  * Returned Value:
- *
+ *   CRC16
  *
  *****************************************************************************/
 
-struct ll_frame_s *ll_frame_new(void);
+uint16_t dnp_crc16_calc(uint8_t *buff, uint32_t len);
 
 /*****************************************************************************
- * Name: ll_frame_delete
+ * Name: dnp_crc16_add
  *
  * Description:
- *
+ *   Calculates the two octet CRC for the data and append the CRC to it.
  *
  * Input Parameters:
- *
+ *   *buff - pointer to data buffer
+ *   len   - length of data
  *
  * Returned Value:
  *
  *
  *****************************************************************************/
 
-void ll_frame_delete(FAR struct ll_frame_s *ll_frame);
+void dnp_crc16_add(uint8_t *buff, uint32_t len);
 
 /*****************************************************************************
- * Name: ll_frame_ops
+ * Name: dnp_crc16_check
  *
  * Description:
- *
+ *   Check if the CRC16 of data passed to it. This function assumes that the
+ *   last two octets of data passed to it is the CRC for the preceding data.
+ *   The CRC for the preceding data is calculated and compared to the final
+ *   two octets.
  *
  * Input Parameters:
- *
+ *   *buff - pointer to data buffer
+ *   len   - length of data
  *
  * Returned Value:
- *   Pointer to link layer operations struct
+ *
  *
  *****************************************************************************/
 
-struct ll_frame_ops_s *ll_frame_ops(void);
+bool dnp_crc16_check(uint8_t *buff, uint32_t len);
 
 #undef EXTERN
 #ifdef __cplusplus
@@ -146,4 +104,4 @@ struct ll_frame_ops_s *ll_frame_ops(void);
 #endif
 #endif /* __ASSEMBLY__ */
 
-#endif /* __DNP_LL_FRAME_H */
+#endif /* __DNP_RTU_H */

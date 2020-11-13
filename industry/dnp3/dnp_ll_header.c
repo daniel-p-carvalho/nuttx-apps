@@ -297,5 +297,5 @@ void ll_header_write(FAR struct dnp_ll_header_s *header, uint8_t *buff)
   buff[LI_SOURCE] = (uint8_t)(header->src & 0xff);
   buff[LI_SOURCE + 1] = (uint8_t)((header->src >> 8) & 0xff);
 
-  dnp_crc16_add(buff, LI_CRC);
+  crc16_add(buff, LI_CRC);
 }

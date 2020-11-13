@@ -1,5 +1,5 @@
 /*****************************************************************************
- * apps/include/dnp3/dnp_ll_config.h
+ * apps/dnp3/dnp_rtu.c
  *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,38 +18,19 @@
  *
  *****************************************************************************/
 
-#ifndef __DNP_LL_CONFIG_H
-#define __DNP_LL_CONFIG_H
-
 /*****************************************************************************
  * Included Files
  *****************************************************************************/
 
-#include <stdint.h>
-#include <stdbool.h>
-
 /*****************************************************************************
- * Public Types
+ * Public Function Prototypes
  *****************************************************************************/
 
-struct ll_config_s
-{
-  bool is_master;         /* If true, master/slave bit is set on all
-                           * messages
-                           */
-  bool use_confirmation;  /* If true, the link layer will send data
-                           * requesting confirmation
-                           */
-  uint32_t retries;       /* Number of retries that link layer will attempt
-                           * before fail
-                           */
-  uint32_t timeout;       /* Response timeout in milliseconds for confirmed
-                           * requests
-                           */
-  uint16_t local_addr;    /* Local address is the address of the outstation */
-  uint16_t remote_addr;   /* Remote address is an address for DNP3 master to
-                           * which outstation reports
-                           */
-};
-
-#endif /* __DNP_LL_CONFIG_H */
+static int rtu_connect(struct abnt14522_reader_s *reader);
+static int rtu_sync(struct abnt14522_reader_s *reader);
+static ssize_t rtu_write(struct abnt14522_reader_s *reader, uint32_t len);
+static ssize_t rtu_read(struct abnt14522_reader_s *reader, uint8_t *buf,
+                        uint32_t len);
+static void rtu_close(struct abnt14522_reader_s *reader);
+static int rtu_select(struct abnt14522_reader_s *reader, struct timespec *ts);
+static void rtu_free(struct abnt14522_reader_s *reader);

@@ -69,7 +69,7 @@ static uint16_t crc16_table[] =
  *****************************************************************************/
 
 /*****************************************************************************
- * Name: dnp_crc16_calc
+ * Name: crc16_calc
  *
  * Description:
  *   Calculates the two octet CRC for the data passed to it.
@@ -83,7 +83,7 @@ static uint16_t crc16_table[] =
  *
  *****************************************************************************/
 
-uint16_t dnp_crc16_calc(uint8_t *buff, uint32_t len)
+uint16_t crc16_calc(uint8_t *buff, uint32_t len)
 {
   uint16_t crc = 0;
 
@@ -96,7 +96,7 @@ uint16_t dnp_crc16_calc(uint8_t *buff, uint32_t len)
 }
 
 /*****************************************************************************
- * Name: dnp_crc16_add
+ * Name: crc16_add
  *
  * Description:
  *   Calculates the two octet CRC for the data and append the CRC to it.
@@ -110,17 +110,17 @@ uint16_t dnp_crc16_calc(uint8_t *buff, uint32_t len)
  *
  *****************************************************************************/
 
-void dnp_crc16_add(uint8_t *buff, uint32_t len)
+void crc16_add(uint8_t *buff, uint32_t len)
 {
   uint16_t crc;
 
-  crc = dnp_crc16_calc(buff, len);
+  crc = crc16_calc(buff, len);
   buff[len] = crc & 0xff;
   buff[len + 1] = (crc >> 8) & 0xff;
 }
 
 /*****************************************************************************
- * Name: dnp_crc16_check
+ * Name: crc16_check
  *
  * Description:
  *   Check if the CRC16 of data passed to it. This function assumes that the
@@ -137,12 +137,12 @@ void dnp_crc16_add(uint8_t *buff, uint32_t len)
  *
  *****************************************************************************/
 
-bool dnp_crc16_check(uint8_t *buff, uint32_t len)
+bool crc16_check(uint8_t *buff, uint32_t len)
 {
   uint16_t *crc;
 
   crc = (uint16_t *)&buff[len - 2];
-  if (*crc == dnp_crc16_calc(buff, len - 2))
+  if (*crc == crc16_calc(buff, len - 2))
     {
       return true;
     }

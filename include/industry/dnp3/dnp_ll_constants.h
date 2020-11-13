@@ -79,6 +79,13 @@
  *       7     6     5     4    3   2   1   0
  */
 
+#define LL_CTRL_DIR_BIT_SHIFT    7
+#define LL_CTRL_PRM_BIT_SHIFT    6
+#define LL_CTRL_FCB_BIT_SHIFT    5
+#define LL_CTRL_FCV_BIT_SHIFT    4
+#define LL_CTRL_DFC_BIT_SHIFT    4
+#define LL_CTRL_FUNC_BIT_SHIFT   0
+
 #define MASK_DIR    0x80
 #define MASK_PRM    0x40
 #define MASK_FCB    0x20
@@ -99,18 +106,18 @@ enum ll_function_code_e
 {
   /* PRM = 0 + Funtion code */
 
-  FC_SEC_ACK                   = 0x00,
-  FC_SEC_NACK                  = 0x01,
-  FC_SEC_LINK_STATUS           = 0x0b,
-  FC_SEC_NOT_SUPPORTED         = 0x0f,
+  LL_CTRL_FC_SEC_ACK              = 0x00,
+  LL_CTRL_FC_SEC_NACK             = 0x01,
+  LL_CTRL_FC_SEC_LINK_STATUS      = 0x0b,
+  LL_CTRL_FC_SEC_NOT_SUPPORTED    = 0x0f,
 
   /* PRM = 1 + Funtion code */
 
-  FC_PRI_RESET_LINK_STATES     = 0x40,
-  FC_PRI_TEST_LINK_STATES      = 0x42,
-  FC_PRI_CONFIRMED_USER_DATA   = 0x43,
-  FC_PRI_UNCONFIRMED_USER_DATA = 0x44,
-  FC_PRI_REQUEST_LINK_STATUS   = 0x49
+  LL_CTRL_FC_PRI_RESET_LINK_STATES     = 0x40,
+  LL_CTRL_FC_PRI_TEST_LINK_STATES      = 0x42,
+  LL_CTRL_FC_PRI_CONFIRMED_USER_DATA   = 0x43,
+  LL_CTRL_FC_PRI_UNCONFIRMED_USER_DATA = 0x44,
+  LL_CTRL_FC_PRI_REQUEST_LINK_STATUS   = 0x49
 };
 
 #endif /* __DNP_LL_CONSTANTS_H */

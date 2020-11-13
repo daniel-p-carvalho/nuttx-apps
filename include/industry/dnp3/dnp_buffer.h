@@ -1,5 +1,5 @@
 /*****************************************************************************
- * apps/include/dnp3/dnp_ll_frame.h
+ * apps/include/dnp3/dnp_buffer.h
  *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,8 +18,8 @@
  *
  *****************************************************************************/
 
-#ifndef __DNP_LL_FRAME_H
-#define __DNP_LL_FRAME_H
+#ifndef __DNP_BUFFER_H
+#define __DNP_BUFFER_H
 
 /*****************************************************************************
  * Included Files
@@ -27,9 +27,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
-#include "industry/dnp3/dnp_ll_constants.h"
-#include "industry/dnp3/dnp_ll_header.h"
 
 /*****************************************************************************
  * Pre-processor Definitions
@@ -39,44 +36,13 @@
  * Public Types
  *****************************************************************************/
 
-struct ll_frame_s;
-struct ll_frame_ops_s
+struct dnp_buffer_s
 {
-  uint32_t (*ll_frame_size)(uint32_t data_len);
-
-  /* Functions for formatting outgoing frames - Sec to Pri */
-
-  void (*format_ack)(FAR struct ll_frame_s *frame, bool is_master,
-                     bool is_rcv_buff_full, uint16_t dest, uint16_t src);
-
-  void (*format_nack)(FAR struct ll_frame_s *frame, bool is_master,
-                      bool is_rcv_buff_full, uint16_t dest, uint16_t src);
-
-  void (*format_linkstatus)(FAR struct ll_frame_s *frame, bool is_master,
-                      bool is_rcv_buff_full, uint16_t dest, uint16_t src);
-
-  void (*format_notsupported)(FAR struct ll_frame_s *frame,
-                              bool is_master, bool is_rcv_buff_full,
-                              uint16_t dest, uint16_t src);
-
-  /* Functions for formatting outgoing frames- Pri to Sec */
-
-  void (*format_reset_linkstates)(FAR struct ll_frame_s *frame,
-                      bool is_master, uint16_t dest, uint16_t src);
-
-  void (*format_test_linkstates)(FAR struct ll_frame_s *frame,
-                      bool is_master, bool fcb, uint16_t dest, uint16_t src);
-
-  void (*format_confirmed_userdata)(FAR struct ll_frame_s *frame,
-                      bool is_master, bool fcb, uint16_t dest, uint16_t src,
-                      uint8_t *data, uint32_t data_len);
-
-  void (*format_unconfirmed_userdata)(FAR struct ll_frame_s *frame,
-                      bool is_master, uint16_t dest, uint16_t src,
-                      uint8_t *data, uint32_t data_len);
-
-  void (*format_request_linkstatus)(FAR struct ll_frame_s *frame,
-                      bool is_master, uint16_t dest, uint16_t src);
+  uint8_t *data;
+  uint32_t rd_pos;
+  uint32_t wr_pos;
+  uint32_t length;
+  size_t size;
 };
 
 /*****************************************************************************
@@ -93,52 +59,55 @@ extern "C"
 #endif
 
 /*****************************************************************************
- * Name: ll_frame_new
+ * Name: dnp_buff_sync
  *
  * Description:
- *
+ *   Searches in buffer for a pattern. If a match is found the read index is
+ *   advanced to the beginning of pattern sequence. If a partial match is
+ *   found the read index is moved to the beginning of the match and the
+ *   partial match is preserved. If no match is found the read index is
+ *   advanced to the end of the read subsequence.
  *
  * Input Parameters:
- *
- *
+ *   *pattern     - pointer to first byte in the input pattern buffer
+ *   *pattern_len - number of bytes in pattern
+ * 
  * Returned Value:
  *
  *
  *****************************************************************************/
 
-struct ll_frame_s *ll_frame_new(void);
+bool dnp_buff_sync(uint8_t *pattern, size_t pattern_len);
 
 /*****************************************************************************
- * Name: ll_frame_delete
+ * Name: dnp_buff_delete
  *
  * Description:
  *
- *
  * Input Parameters:
- *
- *
+ *   *dnp_buff -
+ * 
  * Returned Value:
  *
  *
  *****************************************************************************/
 
-void ll_frame_delete(FAR struct ll_frame_s *ll_frame);
+void dnp_buff_delete(FAR struct dnp_buffer_s *dnp_buff);
 
 /*****************************************************************************
- * Name: ll_frame_ops
+ * Name: dnp_buff_new
  *
  * Description:
  *
- *
  * Input Parameters:
- *
- *
+ *   *dnp_buff -
+ * 
  * Returned Value:
- *   Pointer to link layer operations struct
+ *
  *
  *****************************************************************************/
 
-struct ll_frame_ops_s *ll_frame_ops(void);
+struct dnp_buffer_s *dnp_buff_new(uint8_t *data, size_t size);
 
 #undef EXTERN
 #ifdef __cplusplus
@@ -146,4 +115,4 @@ struct ll_frame_ops_s *ll_frame_ops(void);
 #endif
 #endif /* __ASSEMBLY__ */
 
-#endif /* __DNP_LL_FRAME_H */
+#endif /* __DNP_BUFFER_H */

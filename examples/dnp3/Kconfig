@@ -1,0 +1,30 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config EXAMPLES_DNP3
+	tristate "DNP3 example"
+	default n
+	select INDUSTRY_DNP3_LIB
+	---help---
+		Enable the DNP3 test example
+
+if EXAMPLES_DNP3
+
+config EXAMPLES_DNP3_PROGNAME
+	string "Program name"
+	default "dnp3"
+	---help---
+		This is the name of the program that will be used when the NSH ELF
+		program is installed.
+
+config EXAMPLES_DNP3_PRIORITY
+	int "DNP3 task priority"
+	default 100
+
+config EXAMPLES_DNP3_STACKSIZE
+	int "DNP3 stack size"
+	default DEFAULT_TASK_STACKSIZE
+
+endif

@@ -26,6 +26,7 @@
  *****************************************************************************/
 
 #include "industry/dnp3/dnp_ll_config.h"
+#include "industry/dnp3/dnp_ll_frame.h"
 
 /*****************************************************************************
  * Pre-processor Definitions
@@ -35,7 +36,7 @@
  * Public Types
  *****************************************************************************/
 
-struct dnp_link_layer_s
+struct link_layer_s
 {
   /* Primary station variables */
 
@@ -58,7 +59,61 @@ struct dnp_link_layer_s
                                * bit set
                                */
 
-  FAR const struct dnp_ll_config_s *ll_config;
+  FAR struct ll_config_s *ll_config;
+  FAR struct ll_frame_s *ll_frame;
 };
+
+/*****************************************************************************
+ * Public Function Prototypes
+ *****************************************************************************/
+
+#ifndef __ASSEMBLY__
+#ifdef __cplusplus
+#define EXTERN extern "C"
+extern "C"
+{
+#else
+#define EXTERN extern
+#endif
+
+/*****************************************************************************
+ * Name: link_layer_new
+ *
+ * Description:
+ *
+ *
+ * Input Parameters:
+ *
+ *
+ * Returned Value:
+ *
+ *
+ *****************************************************************************/
+
+struct link_layer_s *link_layer_new(void);
+
+/*****************************************************************************
+ * Name: dnp_ll_reset_link_states
+ *
+ * Description:
+ *   Synchronizes a secondary station’s states so that it properly processes
+ *   primary-to-secondary frames with the FCV bit set.
+ *
+ * Input Parameters:
+ *
+ *
+ * Returned Value:
+ *
+ *
+ *****************************************************************************/
+
+void ll_reset_link_states(FAR struct link_layer_s *ll, bool is_master,
+                          uint16_t src, uint16_t dest);
+
+#undef EXTERN
+#ifdef __cplusplus
+}
+#endif
+#endif /* __ASSEMBLY__ */
 
 #endif /* __DNP_LINK_LAYER_H */

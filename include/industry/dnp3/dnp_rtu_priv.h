@@ -1,5 +1,5 @@
 /*****************************************************************************
- * apps/include/dnp3/dnp_ll_config.h
+ * apps/include/dnp3/dnp_rtu_priv.h
  *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,38 +18,29 @@
  *
  *****************************************************************************/
 
-#ifndef __DNP_LL_CONFIG_H
-#define __DNP_LL_CONFIG_H
+#ifndef __DNP_RTU_PRIV_H
+#define __DNP_RTU_PRIV_H
 
 /*****************************************************************************
  * Included Files
  *****************************************************************************/
 
 #include <stdint.h>
-#include <stdbool.h>
+#include <termios.h>
 
 /*****************************************************************************
  * Public Types
  *****************************************************************************/
 
-struct ll_config_s
+struct dnp_rtu_data_s
 {
-  bool is_master;         /* If true, master/slave bit is set on all
-                           * messages
-                           */
-  bool use_confirmation;  /* If true, the link layer will send data
-                           * requesting confirmation
-                           */
-  uint32_t retries;       /* Number of retries that link layer will attempt
-                           * before fail
-                           */
-  uint32_t timeout;       /* Response timeout in milliseconds for confirmed
-                           * requests
-                           */
-  uint16_t local_addr;    /* Local address is the address of the outstation */
-  uint16_t remote_addr;   /* Remote address is an address for DNP3 master to
-                           * which outstation reports
-                           */
+  int fd;             /* File descriptor */
+  char *device;       /* Device: "/dev/ttyS0" */
+  int32_t baud;       /* Bauds: 9600, 19200, 57600, 115200, etc */
+  uint8_t data_bit;   /* Data bit */
+  uint8_t stop_bit;   /* Stop bit */ 
+  char parity;        /* Parity: 'N', 'O', 'E' */
+  struct termios old_tios;
 };
 
-#endif /* __DNP_LL_CONFIG_H */
+#endif /* __DNP_RTU_PRIV_H */

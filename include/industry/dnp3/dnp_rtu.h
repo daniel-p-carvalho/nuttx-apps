@@ -1,5 +1,5 @@
 /*****************************************************************************
- * apps/include/dnp3/dnp_crc16.h
+ * apps/include/dnp3/dnp_rtu.h
  *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,14 +18,12 @@
  *
  *****************************************************************************/
 
-#ifndef __DNP_CRC16_H
-#define __DNP_CRC16_H
+#ifndef __DNP_RTU_H
+#define __DNP_RTU_H
 
 /*****************************************************************************
  * Included Files
  *****************************************************************************/
-
-#include <stdint.h>
 
 /*****************************************************************************
  * Public Types
@@ -43,60 +41,6 @@ extern "C"
 #else
 #define EXTERN extern
 #endif
-
-/*****************************************************************************
- * Name: crc16_calc
- *
- * Description:
- *   Calculates the two octet CRC for the data passed to it.
- *
- * Input Parameters:
- *   *buff * - pointer to data buffer
- *   len     - length of data
- *
- * Returned Value:
- *   CRC16
- *
- *****************************************************************************/
-
-uint16_t crc16_calc(uint8_t *buff, uint32_t len);
-
-/*****************************************************************************
- * Name: crc16_add
- *
- * Description:
- *   Calculates the two octet CRC for the data and append the CRC to it.
- *
- * Input Parameters:
- *   *buff - pointer to data buffer
- *   len   - length of data
- *
- * Returned Value:
- *
- *
- *****************************************************************************/
-
-void crc16_add(uint8_t *buff, uint32_t len);
-
-/*****************************************************************************
- * Name: crc16_check
- *
- * Description:
- *   Check if the CRC16 of data passed to it. This function assumes that the
- *   last two octets of data passed to it is the CRC for the preceding data.
- *   The CRC for the preceding data is calculated and compared to the final
- *   two octets.
- *
- * Input Parameters:
- *   *buff - pointer to data buffer
- *   len   - length of data
- *
- * Returned Value:
- *
- *
- *****************************************************************************/
-
-bool crc16_check(uint8_t *buff, uint32_t len);
 
 #undef EXTERN
 #ifdef __cplusplus

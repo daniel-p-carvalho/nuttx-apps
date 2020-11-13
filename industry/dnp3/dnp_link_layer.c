@@ -22,6 +22,8 @@
  * Included Files
  *****************************************************************************/
 
+#include <assert.h>
+#include <debug.h>
 #include <stdint.h>
 #include <stdbool.h>
 
@@ -63,7 +65,7 @@
  * Private Data
  *****************************************************************************/
 
-static struct dnp_ll_config_s ll_config =
+static struct ll_config_s g_ll_config =
 {
   .is_master        = IS_MASTER,
   .use_confirmation = USE_CONFIRMATION,
@@ -73,29 +75,59 @@ static struct dnp_ll_config_s ll_config =
   .remote_addr      = CONFIG_DNP_REMOTE_ADDR
 };
 
+struct link_layer_s g_link_layer =
+{
+  .sec_station_is_reset = false,
+  .nfcb                 = false,
+  .link_is_reset        = false,
+  .efcb                 = false,
+
+  .ll_config            = &g_ll_config
+};
+
 /*****************************************************************************
  * Private Function Prototypes
  *****************************************************************************/
 
-static void reset_nfcb(FAR struct dnp_link_layer_s *ll);
-static void toggle_nfcb(FAR struct dnp_link_layer_s *ll);
-static bool next_nfcb(FAR struct dnp_link_layer_s *ll);
-static void reset_efcb(FAR struct dnp_link_layer_s *ll);
-static void toggle_efcb(FAR struct dnp_link_layer_s *ll);
-static bool next_efcb(FAR struct dnp_link_layer_s *ll);
+static void reset_nfcb(FAR struct link_layer_s *ll);
+static void toggle_nfcb(FAR struct link_layer_s *ll);
+static bool next_nfcb(FAR struct link_layer_s *ll);
+static void reset_efcb(FAR struct link_layer_s *ll);
+static void toggle_efcb(FAR struct link_layer_s *ll);
+static bool next_efcb(FAR struct link_layer_s *ll);
 
-static bool validate(FAR struct dnp_link_layer_s *ll, bool is_master,
+static bool validate(FAR struct link_layer_s *ll, bool is_master,
                      uint16_t src, uint16_t dest);
 
 /*****************************************************************************
  * Private Functions
  *****************************************************************************/
 
+// void print_header(FAR struct dnp_ll_header_s *header)
+// {
+//   _info("START: 0x%x")
+//   return header->length;
+// }
+
+/*****************************************************************************
+ * Name: send_ack
+ *****************************************************************************/
+
+static void send_ack(FAR struct link_layer_s *ll)
+{
+  FAR struct ll_config_s *config = ll->ll_config;
+  FAR struct ll_frame_s  *frame  = ll->ll_frame;
+  FAR struct ll_frame_ops_s *frame_ops = ll_frame_ops();
+
+  frame_ops->format_ack(frame, config->is_master, false, config->remote_addr,
+                        config->local_addr);
+}
+
 /*****************************************************************************
  * Name: reset_nfcb
  *****************************************************************************/
 
-static void reset_nfcb(FAR struct dnp_link_layer_s *ll)
+static void reset_nfcb(FAR struct link_layer_s *ll)
 {
   ll->nfcb = true;
 }
@@ -104,7 +136,7 @@ static void reset_nfcb(FAR struct dnp_link_layer_s *ll)
  * Name: toggle_nfcb
  *****************************************************************************/
 
-static void toggle_nfcb(FAR struct dnp_link_layer_s *ll)
+static void toggle_nfcb(FAR struct link_layer_s *ll)
 {
   ll->nfcb = !ll->nfcb;
 }
@@ -113,7 +145,7 @@ static void toggle_nfcb(FAR struct dnp_link_layer_s *ll)
  * Name: next_nfcb
  *****************************************************************************/
 
-static bool next_nfcb(FAR struct dnp_link_layer_s *ll)
+static bool next_nfcb(FAR struct link_layer_s *ll)
 {
   return ll->nfcb;
 }
@@ -122,7 +154,7 @@ static bool next_nfcb(FAR struct dnp_link_layer_s *ll)
  * Name: reset_efcb
  *****************************************************************************/
 
-static void reset_efcb(FAR struct dnp_link_layer_s *ll)
+static void reset_efcb(FAR struct link_layer_s *ll)
 {
   ll->efcb = true;
   ll->link_is_reset = true;
@@ -132,7 +164,7 @@ static void reset_efcb(FAR struct dnp_link_layer_s *ll)
  * Name: toggle_efcb
  *****************************************************************************/
 
-static void toggle_efcb(FAR struct dnp_link_layer_s *ll)
+static void toggle_efcb(FAR struct link_layer_s *ll)
 {
   ll->efcb = !ll->efcb;
 }
@@ -141,7 +173,7 @@ static void toggle_efcb(FAR struct dnp_link_layer_s *ll)
  * Name: next_efcb
  *****************************************************************************/
 
-static bool next_efcb(FAR struct dnp_link_layer_s *ll)
+static bool next_efcb(FAR struct link_layer_s *ll)
 {
   return ll->efcb;
 }
@@ -150,7 +182,7 @@ static bool next_efcb(FAR struct dnp_link_layer_s *ll)
  * Name: validate
  *****************************************************************************/
 
-static bool validate(FAR struct dnp_link_layer_s *ll, bool is_master,
+static bool validate(FAR struct link_layer_s *ll, bool is_master,
                      uint16_t src, uint16_t dest)
 {
   if (is_master == ll->ll_config->is_master)
@@ -159,6 +191,8 @@ static bool validate(FAR struct dnp_link_layer_s *ll, bool is_master,
        * slave
        */
 
+      _err("MASTER frame rcvd from MASTER or SLAVE frame rcvd from SLAVE\n");
+
       return false;
     }
 
@@ -166,12 +200,16 @@ static bool validate(FAR struct dnp_link_layer_s *ll, bool is_master,
     {
       /* Frame received from unknown source */
 
+      _err("Frame received from unknown source\n");
+
       return false;
     }
 
   if (src != ll->ll_config->local_addr)
     {
       /* Frame received for unknown destination */
+
+      _err("Frame received for unknown destination\n");
 
       return false;
     }
@@ -183,8 +221,45 @@ static bool validate(FAR struct dnp_link_layer_s *ll, bool is_master,
  * Public Functions
  *****************************************************************************/
 
-void reset_link_states(FAR struct dnp_link_layer_s *ll, bool is_master,
-                       uint16_t src, uint16_t dest)
+/*****************************************************************************
+ * Name: link_layer_new
+ *
+ * Description:
+ *
+ *
+ * Input Parameters:
+ *
+ *
+ * Returned Value:
+ *
+ *
+ *****************************************************************************/
+
+struct link_layer_s *link_layer_new(void)
+{
+
+  g_link_layer.ll_frame = ll_frame_new();
+
+  return &g_link_layer;
+}
+
+/*****************************************************************************
+ * Name: dnp_ll_reset_link_states
+ *
+ * Description:
+ *   Synchronizes a secondary station’s states so that it properly processes
+ *   primary-to-secondary frames with the FCV bit set.
+ *
+ * Input Parameters:
+ *
+ *
+ * Returned Value:
+ *
+ *
+ *****************************************************************************/
+
+void ll_reset_link_states(FAR struct link_layer_s *ll, bool is_master,
+                              uint16_t src, uint16_t dest)
 {
   /* After completing the reset link states transaction, a secondary shall
    * expect the FCB bit to be 1 in the next message with the FCV bit set.
@@ -193,13 +268,21 @@ void reset_link_states(FAR struct dnp_link_layer_s *ll, bool is_master,
    * FCV bit set
    */
 
+  /* Check header */
+
   if (validate(ll, is_master, dest, src))
     {
       /* ISSUE - The FCV bit must be checked. According Table 51 the NFCB bit
        *         is reseted only if FCV bit is 0
        */
 
+      _info("Header is valid.\n");
+
       reset_efcb(ll);
       //TODO: SEND ACK
+    
+      return;
     }
+  
+  _err("Header is NOT valid");
 }

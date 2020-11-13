@@ -1,5 +1,5 @@
 /*****************************************************************************
- * apps/include/dnp3/dnp_ll_config.h
+ * examples/dnp3/dnp3_main.c
  *
  * Licensed to the Apache Software Foundation (ASF) under one or more
  * contributor license agreements.  See the NOTICE file distributed with
@@ -18,38 +18,33 @@
  *
  *****************************************************************************/
 
-#ifndef __DNP_LL_CONFIG_H
-#define __DNP_LL_CONFIG_H
-
 /*****************************************************************************
  * Included Files
  *****************************************************************************/
 
-#include <stdint.h>
-#include <stdbool.h>
+#include <nuttx/config.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "industry/dnp3/dnp_link_layer.h"
 
 /*****************************************************************************
- * Public Types
+ * Private Functions
  *****************************************************************************/
 
-struct ll_config_s
-{
-  bool is_master;         /* If true, master/slave bit is set on all
-                           * messages
-                           */
-  bool use_confirmation;  /* If true, the link layer will send data
-                           * requesting confirmation
-                           */
-  uint32_t retries;       /* Number of retries that link layer will attempt
-                           * before fail
-                           */
-  uint32_t timeout;       /* Response timeout in milliseconds for confirmed
-                           * requests
-                           */
-  uint16_t local_addr;    /* Local address is the address of the outstation */
-  uint16_t remote_addr;   /* Remote address is an address for DNP3 master to
-                           * which outstation reports
-                           */
-};
+/*****************************************************************************
+ * dnp3_main
+ *****************************************************************************/
 
-#endif /* __DNP_LL_CONFIG_H */
+int main(int argc, FAR char *argv[])
+{
+  FAR struct link_layer_s *link_layer;
+  int ret = 0;
+
+  link_layer = link_layer_new();
+
+  ll_reset_link_states(link_layer, false, 1024, 1);
+
+  return ret;
+}
