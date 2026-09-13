@@ -123,6 +123,8 @@ static int do_ptpd_status(int pid)
     (intmax_t)(time_now.tv_sec - status.last_transmitted_delayresp.tv_sec));
   printf("- last_transmitted_delayreq: %jd s ago\n",
     (intmax_t)(time_now.tv_sec - status.last_transmitted_delayreq.tv_sec));
+  printf("- last_transmitted_pdelayreq: %jd s ago\n",
+    (intmax_t)(time_now.tv_sec - status.last_transmitted_pdelayreq.tv_sec));
 
   return EXIT_SUCCESS;
 }
@@ -159,6 +161,7 @@ static void usage(FAR const char *progname)
                   " -B       The best master clock algorithm is used\n"
                   " -r       synchronize system (realtime) clock\n"
                   " -E       E2E, support client delay request-response\n"
+                  " -P       P2P, support peer delay request-response\n"
                   " -i [dev] interface device to use, for example 'eth0'\n"
                   " -p [dev] clock device to use\n"
                   " -t [pid] look the status of ptp daemon\n"
@@ -184,7 +187,7 @@ int main(int argc, FAR char *argv[])
   config.interface = "eth0";
   config.clock = "realtime";
   config.client_only = false;
-  config.delay_e2e = false;
+  config.delay_mechanism = PTP_DELAY_NONE;
 #ifdef CONFIG_NET_TIMESTAMP
   config.hardware_ts = true;
 #else
@@ -193,7 +196,7 @@ int main(int argc, FAR char *argv[])
   config.bmca = false;
   config.af = AF_INET;
 
-  while ((option = getopt(argc, argv, "p:i:t:d:rs246BEHS")) != ERROR)
+  while ((option = getopt(argc, argv, "p:i:t:d:rs246BEHSP")) != ERROR)
     {
       switch (option)
         {
@@ -217,7 +220,22 @@ int main(int argc, FAR char *argv[])
             config.bmca = true;
             break;
           case 'E':
-            config.delay_e2e = true;
+            if (config.delay_mechanism != PTP_DELAY_NONE)
+              {
+                usage(argv[0]);
+                return EXIT_FAILURE;
+              }
+
+            config.delay_mechanism = PTP_DELAY_E2E;
+            break;
+          case 'P':
+            if (config.delay_mechanism != PTP_DELAY_NONE)
+              {
+                usage(argv[0]);
+                return EXIT_FAILURE;
+              }
+
+            config.delay_mechanism = PTP_DELAY_P2P;
             break;
 #ifdef CONFIG_NET_TIMESTAMP
           case 'H':
