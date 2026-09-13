@@ -861,7 +861,23 @@ static int ptp_sendmsg(FAR struct ptp_state_s *state, FAR const void *buf,
 
   if (sendts != NULL)
     {
+#ifdef SIOCG_TX_HW_TIMESTAMP
+      struct ifreq req;
+
+      memset(&req, 0, sizeof(req));
+      strlcpy(req.ifr_name, state->config->interface, sizeof(req.ifr_name));
+      req.ifr_data = sendts;
+
+      if (ioctl(state->tx_socket, SIOCG_TX_HW_TIMESTAMP,
+                (unsigned long)&req) < 0)
+        {
+          /* Fallback to software capture if hardware TX timestamp fails */
+
+          ptp_gettime(state, sendts);
+        }
+#else
       ptp_gettime(state, sendts);
+#endif
     }
 
   return ret;
