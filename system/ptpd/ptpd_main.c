@@ -260,5 +260,26 @@ int main(int argc, FAR char *argv[])
         }
     }
 
+#ifndef CONFIG_SCHED_TICKLESS
+  if (config.delay_mechanism == PTP_DELAY_P2P)
+    {
+      /* Without a tickless (hardware timer-backed) clock, clock_gettime()
+       * only advances once per CONFIG_USEC_PER_TICK scheduler tick, with
+       * no interpolation. The P2P peer delay formula subtracts two local
+       * timestamps (t1, t4) captured microseconds apart on a link this
+       * fast, which almost always fall inside the same tick: (t4 - t1)
+       * comes out exactly 0, or a full tick jump on the rare occasions a
+       * tick boundary falls in between. Either way path_delay_ns will be
+       * rejected as out of range and never converge.
+       */
+
+      fprintf(stderr,
+              "WARNING: P2P (-P) selected without CONFIG_SCHED_TICKLESS. "
+              "path_delay_ns measurements require a tickless "
+              "(hardware timer-backed) clock and will likely never "
+              "converge on this build.\n");
+    }
+#endif
+
   return do_ptpd_start(&config);
 }
