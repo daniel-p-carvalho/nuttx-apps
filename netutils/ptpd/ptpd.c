@@ -438,6 +438,24 @@ static int ptp_adjtime(FAR struct ptp_state_s *state, int64_t delta_ns,
   if (state->clockid == CLOCK_REALTIME)
     {
       struct timeval delta;
+#ifdef SIOCS_PTP_ADJFREQ
+      struct ifreq req;
+      long adj_ppb;
+#endif
+
+#ifdef SIOCS_PTP_ADJFREQ
+      if (state->config->hardware_ts)
+        {
+          adj_ppb = (long)ppb;
+          memset(&req, 0, sizeof(req));
+          strlcpy(req.ifr_name, state->config->interface,
+                  sizeof(req.ifr_name));
+          req.ifr_data = (FAR void *)&adj_ppb;
+
+          ioctl(state->tx_socket, SIOCS_PTP_ADJFREQ,
+                (unsigned long)&req);
+        }
+#endif
 
       delta.tv_sec = delta_ns / NSEC_PER_SEC;
       delta_ns -= delta.tv_sec * NSEC_PER_SEC;
