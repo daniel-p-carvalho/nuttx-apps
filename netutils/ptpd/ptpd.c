@@ -446,7 +446,34 @@ static int ptp_adjtime(FAR struct ptp_state_s *state, int64_t delta_ns,
 #ifdef SIOCS_PTP_ADJFREQ
       if (state->config->hardware_ts)
         {
-          adj_ppb = (long)ppb;
+          /* The hardware MAC PTP counter drives the physical PPS output.
+           * To keep the PPS phase-locked to the master, the frequency
+           * adjustment passed to the MAC must compensate both the measured
+           * frequency drift AND the residual phase error (delta_ns),
+           * acting as a proportional-integral (PI) phase servo.
+           *
+           * delta_ns passed here is adjustment_ns, which already
+           * combines frequency drift and current phase error clamped
+           * to max_adjust_ns. Converting it to ppb over
+           * CONFIG_CLOCK_ADJTIME_PERIOD_MS produces the rate needed to
+           * pull the hardware counter into phase lock.
+           */
+
+          int64_t hw_ppb = delta_ns * MSEC_PER_SEC /
+                           CONFIG_CLOCK_ADJTIME_PERIOD_MS;
+          const int64_t slew_limit_ppb =
+            (int64_t)CONFIG_CLOCK_ADJTIME_SLEWLIMIT_PPM * 1000;
+
+          if (hw_ppb > slew_limit_ppb)
+            {
+              hw_ppb = slew_limit_ppb;
+            }
+          else if (hw_ppb < -slew_limit_ppb)
+            {
+              hw_ppb = -slew_limit_ppb;
+            }
+
+          adj_ppb = (long)hw_ppb;
           memset(&req, 0, sizeof(req));
           strlcpy(req.ifr_name, state->config->interface,
                   sizeof(req.ifr_name));
@@ -1208,9 +1235,23 @@ static int ptp_update_local_clock(FAR struct ptp_state_s *state,
 
       struct timespec new_time;
 
-      ptp_gettime(state, &new_time);
-      clock_timespec_subtract(&new_time, local_timestamp, &new_time);
-      clock_timespec_add(&new_time, remote_timestamp, &new_time);
+      if (state->config->hardware_ts)
+        {
+          new_time = *remote_timestamp;
+          new_time.tv_nsec += state->path_delay_ns;
+          if (new_time.tv_nsec >= NSEC_PER_SEC)
+            {
+              new_time.tv_nsec -= NSEC_PER_SEC;
+              new_time.tv_sec++;
+            }
+        }
+      else
+        {
+          ptp_gettime(state, &new_time);
+          clock_timespec_subtract(&new_time, local_timestamp, &new_time);
+          clock_timespec_add(&new_time, remote_timestamp, &new_time);
+        }
+
       ret = ptp_settime(state, &new_time);
 
       /* Reinitialize drift adjustment parameters */
@@ -1226,6 +1267,29 @@ static int ptp_update_local_clock(FAR struct ptp_state_s *state,
         {
           ptpinfo("Jumped to timestamp %jd.%09ld s\n",
                   (intmax_t)new_time.tv_sec, new_time.tv_nsec);
+
+#ifdef SIOCS_PTP_ADJPHASE
+          /* Align the MAC's own PTP hardware counter (used for RX/TX
+           * timestamps and the PPS output) to the same correction just
+           * applied to CLOCK_REALTIME. Only done here, on a hard jump
+           * (a rare event, typically just after initial sync), so the
+           * PPS edge does not move on every ordinary sync cycle -
+           * SIOCS_PTP_ADJFREQ keeps it phase-locked afterward.
+           */
+
+          if (state->config->hardware_ts)
+            {
+              struct ifreq req;
+
+              memset(&req, 0, sizeof(req));
+              strlcpy(req.ifr_name, state->config->interface,
+                      sizeof(req.ifr_name));
+              req.ifr_data = (FAR void *)&delta_ns;
+
+              ioctl(state->tx_socket, SIOCS_PTP_ADJPHASE,
+                    (unsigned long)&req);
+            }
+#endif
         }
       else
         {
