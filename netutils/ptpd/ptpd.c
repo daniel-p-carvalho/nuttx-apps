@@ -1235,6 +1235,17 @@ static int ptp_update_local_clock(FAR struct ptp_state_s *state,
 
   delta_ns = timespec_delta_ns(remote_timestamp, local_timestamp);
   delta_ns += state->path_delay_ns;
+
+  /* Compensate the fixed hardware latency between the PTP counter and the
+   * physical PPS output pin (see Kconfig help). Only meaningful when that
+   * counter is actually driving a PPS pin, i.e. hardware timestamping.
+   */
+
+  if (state->config->hardware_ts)
+    {
+      delta_ns += CONFIG_NETUTILS_PTPD_PPS_OUTPUT_LATENCY_NS;
+    }
+
   absdelta_ns = (delta_ns < 0) ? -delta_ns : delta_ns;
 
   if (absdelta_ns > adj_limit_ns)

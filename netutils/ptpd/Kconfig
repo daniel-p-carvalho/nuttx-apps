@@ -189,4 +189,30 @@ config NETUTILS_PTPD_DELAYREQ_AVGCOUNT
 	---help---
 		Measured path delay is averaged over this many samples.
 
+config NETUTILS_PTPD_PPS_OUTPUT_LATENCY_NS
+	int "PTP hardware PPS output latency compensation (ns)"
+	default 0
+	range -1000000000 1000000000
+	---help---
+		Fixed hardware latency, in nanoseconds, between the PTP hardware
+		counter reaching a given value and that same value being reflected
+		on a physical PPS output pin (e.g. propagation delay through the
+		MAC's PPS signal generation logic and GPIO output stage). This is
+		analogous to the egressLatency/ingressLatency port parameters in
+		IEEE 1588 - it compensates a hardware asymmetry that the protocol
+		itself cannot see, since RX/TX event timestamps and the PPS pin
+		can be latched through different internal paths off the same
+		counter with different latencies.
+
+		A positive value means the physical PPS edge lags the hardware
+		counter by this much: the counter is advanced by this amount (in
+		addition to path_delay_ns) so the physical PPS edge lines up with
+		the true time instead of the counter's own value. A negative
+		value compensates the opposite case (PPS edge leads the counter).
+
+		There is no way to compute this from the protocol; it must be
+		measured empirically (e.g. comparing the PPS output against a
+		reference PPS on an oscilloscope) and set here per board/revision.
+		Default 0 preserves prior (uncompensated) behavior.
+
 endif # NETUTILS_PTPD
