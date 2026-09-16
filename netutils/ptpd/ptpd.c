@@ -1080,6 +1080,18 @@ static int ptp_send_pdelay_req(FAR struct ptp_state_s *state)
   req.header.logmessageinterval = PTP_LOG_INTERVAL_DELAY_REQ;
   ptp_increment_sequence(&state->pdelay_req_seq, &req.header);
 
+  /* Starting a new request cycle invalidates any Pdelay_Resp we might
+   * still be waiting a Follow_Up for from the previous one (e.g. its
+   * Resp was lost and only its Follow_Up shows up later, after this
+   * new cycle has already updated pdelay_req_seq). Without this, that
+   * orphaned Follow_Up would still pass the sequence check below (it
+   * now matches the new cycle) and get paired with pdelayreq_rx_time
+   * (t2) captured for the OLD cycle - producing a path delay that is
+   * off by roughly one full request interval.
+   */
+
+  state->pdelay_waiting_followup = false;
+
   ptp_gettime(state, &state->pdelayreq_tx_time);
   timespec_to_ptp_format(&state->pdelayreq_tx_time, req.origintimestamp);
 
