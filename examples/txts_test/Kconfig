@@ -1,0 +1,7 @@
+config EXAMPLES_TXTS_TEST
+	tristate "SO_TIMESTAMPING TX hw-timestamp probe"
+	default n
+	depends on NET_PKT && NET_TIMESTAMP
+	---help---
+		Throwaway probe for validating apache/nuttx PR #20161's
+		SO_TIMESTAMPING TX delivery against a real Ethernet driver.
