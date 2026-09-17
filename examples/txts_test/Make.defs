@@ -1,0 +1,3 @@
+ifneq ($(CONFIG_EXAMPLES_TXTS_TEST),)
+CONFIGURED_APPS += $(APPDIR)/examples/txts_test
+endif
