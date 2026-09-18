@@ -532,16 +532,18 @@ static int ptp_destroy_state(FAR struct ptp_state_s *state)
 
   ptp_close(state->clockid);
 
-  mcast_addr.s_addr = HTONL(PTP_MULTICAST_ADDR);
-  ipmsfilter(&state->interface_addr.sin_addr,
-             &mcast_addr, MCAST_EXCLUDE);
-
-  if (state->config->af == AF_INET &&
-      state->config->delay_mechanism == PTP_DELAY_P2P)
+  if (state->config->af == AF_INET)
     {
-      mcast_addr.s_addr = HTONL(PTP_PDELAY_MULTICAST_ADDR);
+      mcast_addr.s_addr = HTONL(PTP_MULTICAST_ADDR);
       ipmsfilter(&state->interface_addr.sin_addr,
                  &mcast_addr, MCAST_EXCLUDE);
+
+      if (state->config->delay_mechanism == PTP_DELAY_P2P)
+        {
+          mcast_addr.s_addr = HTONL(PTP_PDELAY_MULTICAST_ADDR);
+          ipmsfilter(&state->interface_addr.sin_addr,
+                     &mcast_addr, MCAST_EXCLUDE);
+        }
     }
 
   if (state->tx_socket > 0)
@@ -747,8 +749,9 @@ static int ptp_initialize_state(FAR struct ptp_state_s *state)
       goto errout;
     }
 
-  state->own_identity.header.version = PTP_VERSION_2_1;
+  state->own_identity.header.version = PTP_VERSION_2_0;
   state->own_identity.header.domain = CONFIG_NETUTILS_PTPD_DOMAIN;
+  state->own_identity.header.controlfield = 0x05;
   state->own_identity.header.sourceidentity[0] = req.ifr_hwaddr.sa_data[0];
   state->own_identity.header.sourceidentity[1] = req.ifr_hwaddr.sa_data[1];
   state->own_identity.header.sourceidentity[2] = req.ifr_hwaddr.sa_data[2];
@@ -792,6 +795,11 @@ static int ptp_check_multicast_status(FAR struct ptp_state_s *state)
   struct timespec time_now;
   struct timespec delta;
   int ret;
+
+  if (state->config->af != AF_INET)
+    {
+      return OK;
+    }
 
   clock_gettime(CLOCK_MONOTONIC, &time_now);
   clock_timespec_subtract(&time_now, &state->last_received_multicast,
@@ -861,10 +869,10 @@ static int ptp_get_tx_timestamp(FAR struct ptp_state_s *state,
   pfd.events = POLLPRI;
   pfd.revents = 0;
 
-  ret = poll(&pfd, 1, 50);
+  ret = poll(&pfd, 1, 500);
   if (ret > 0 && (pfd.revents & (POLLPRI | POLLERR)) != 0)
     {
-      char errbuf[64];
+      char errbuf[128];
       char cmsgbuf[128];
       struct msghdr msg;
       struct iovec iov;
@@ -892,10 +900,25 @@ static int ptp_get_tx_timestamp(FAR struct ptp_state_s *state,
                     (FAR struct timespec *)CMSG_DATA(cmsg);
 
                   *tx_ts = ts[2];
+                  _alert("PTP TX HWTS fetched: %jd.%09ld s\n",
+                         (intmax_t)tx_ts->tv_sec, tx_ts->tv_nsec);
                   return OK;
                 }
             }
+
+          _alert("PTP TX HWTS: recvmsg %zd B but no SO_TIMESTAMPING cmsg\n",
+                 n);
         }
+      else
+        {
+          _alert("PTP TX HWTS: recvmsg MSG_ERRQUEUE failed errno=%d\n",
+                 errno);
+        }
+    }
+  else
+    {
+      _alert("PTP TX HWTS: poll ret=%d revents=0x%04x errno=%d\n",
+             ret, pfd.revents, errno);
     }
 
   return ERROR;
@@ -911,6 +934,9 @@ static int ptp_sendmsg(FAR struct ptp_state_s *state, FAR const void *buf,
 #if defined(CONFIG_NET_TIMESTAMP) && defined(SO_TIMESTAMPING)
   bool do_hwts = (sendts != NULL && state->config->hardware_ts &&
                   state->config->af == AF_PACKET);
+
+  _alert("ptp_sendmsg: do_hwts=%d sendts=%p hwts=%d af=%d\n",
+         do_hwts, sendts, state->config->hardware_ts, state->config->af);
 #endif
 
   if (sendts != NULL)
@@ -973,7 +999,7 @@ static int ptp_sendmsg(FAR struct ptp_state_s *state, FAR const void *buf,
 #if defined(CONFIG_NET_TIMESTAMP) && defined(SO_TIMESTAMPING)
       if (do_hwts)
         {
-          char drainbuf[64];
+          char drainbuf[128];
           char draincmsg[128];
           struct msghdr drainmsg;
           struct iovec drainiov;
@@ -1029,8 +1055,14 @@ static int ptp_sendmsg(FAR struct ptp_state_s *state, FAR const void *buf,
 
           if (ptp_get_tx_timestamp(state, sendts) != OK)
             {
-              ptpwarn("Hardware TX timestamp timed out, falling back\n");
+              _alert("PTP TX HWTS TIMEOUT! Fallback to SW ts: %jd.%09ld s\n",
+                     (intmax_t)sw_ts.tv_sec, sw_ts.tv_nsec);
               *sendts = sw_ts;
+            }
+          else
+            {
+              _alert("PTP TX HWTS OK: %jd.%09ld s\n",
+                     (intmax_t)sendts->tv_sec, sendts->tv_nsec);
             }
 
           setsockopt(state->tx_socket, SOL_SOCKET, SO_TIMESTAMPING,
@@ -1194,7 +1226,9 @@ static int ptp_send_pdelay_req(FAR struct ptp_state_s *state)
   memset(&req, 0, sizeof(req));
   req.header = state->own_identity.header;
   req.header.messagetype = PTP_MSGTYPE_PDELAY_REQ;
+  req.header.version = PTP_VERSION_2_0;
   req.header.messagelength[1] = sizeof(req);
+  req.header.controlfield = 0x05;
   req.header.logmessageinterval = PTP_LOG_INTERVAL_DELAY_REQ;
   ptp_increment_sequence(&state->pdelay_req_seq, &req.header);
 
@@ -1222,8 +1256,10 @@ static int ptp_send_pdelay_req(FAR struct ptp_state_s *state)
   else
     {
       clock_gettime(CLOCK_MONOTONIC, &state->last_transmitted_pdelayreq);
-      ptpinfo("Sent Pdelay_Req, seq %d\n",
-              ptp_get_sequence(&req.header));
+      _alert("Sent Pdelay_Req: seq=%d t1=%jd.%09ld s\n",
+             ptp_get_sequence(&req.header),
+             (intmax_t)state->pdelayreq_tx_time.tv_sec,
+             state->pdelayreq_tx_time.tv_nsec);
     }
 
   return ret;
@@ -1709,13 +1745,13 @@ static void ptp_record_path_delay(FAR struct ptp_state_s *state,
       state->path_delay_ns += (path_delay - state->path_delay_ns)
                               / state->path_delay_avgcount;
 
-      ptpinfo("Path delay: %ld ns (avg: %ld ns)\n",
-              (long)path_delay, state->path_delay_ns);
+      _alert("PATH_DELAY ACCEPTED: %lld ns (avg=%ld ns)\n",
+             (long long)path_delay, state->path_delay_ns);
     }
   else
     {
-      ptpwarn("Path delay out of range: %lld ns\n",
-              (long long)path_delay);
+      _alert("PATH_DELAY REJECTED: %lld ns (limits: -100000 to %lld)\n",
+             (long long)path_delay, (long long)max_path_delay);
     }
 }
 
@@ -1807,8 +1843,10 @@ static int ptp_process_pdelay_req(FAR struct ptp_state_s *state,
   memset(&resp, 0, sizeof(resp));
   resp.header = state->own_identity.header;
   resp.header.messagetype = PTP_MSGTYPE_PDELAY_RESP;
+  resp.header.version = PTP_VERSION_2_0;
   resp.header.messagelength[1] = sizeof(resp);
   resp.header.flags[0] = PTP_FLAGS0_TWOSTEP;
+  resp.header.controlfield = 0x05;
   memcpy(resp.header.sequenceid, msg->header.sequenceid,
          sizeof(resp.header.sequenceid));
   resp.header.logmessageinterval = 0x7f;
@@ -1837,7 +1875,9 @@ static int ptp_process_pdelay_req(FAR struct ptp_state_s *state,
   memset(&fup, 0, sizeof(fup));
   fup.header = state->own_identity.header;
   fup.header.messagetype = PTP_MSGTYPE_PDELAY_RESP_FOLLOW_UP;
+  fup.header.version = PTP_VERSION_2_0;
   fup.header.messagelength[1] = sizeof(fup);
+  fup.header.controlfield = 0x05;
   memcpy(fup.header.sequenceid, msg->header.sequenceid,
          sizeof(fup.header.sequenceid));
   fup.header.logmessageinterval = 0x7f;
@@ -1898,6 +1938,13 @@ static int ptp_process_pdelay_resp(FAR struct ptp_state_s *state,
   ptp_add_correction_time(msg->header.correction,
                           &state->pdelayreq_rx_time);
 
+  _alert("Pdelay_Resp: seq=%d t4=%jd.%09ld t2=%jd.%09ld twostep=%d\n",
+         sequence, (intmax_t)state->pdelayresp_rx_time.tv_sec,
+         state->pdelayresp_rx_time.tv_nsec,
+         (intmax_t)state->pdelayreq_rx_time.tv_sec,
+         state->pdelayreq_rx_time.tv_nsec,
+         (msg->header.flags[0] & PTP_FLAGS0_TWOSTEP) != 0);
+
   if (msg->header.flags[0] & PTP_FLAGS0_TWOSTEP)
     {
       state->pdelay_waiting_followup = true;
@@ -1924,6 +1971,11 @@ static int ptp_process_pdelay_resp(FAR struct ptp_state_s *state,
                                    &state->pdelayreq_tx_time);
       t3_t2_ns = (int64_t)correction_time;
       path_delay = (t4_t1_ns - t3_t2_ns) / 2;
+
+      _alert("Pdelay_1STEP: seq=%d t4-t1=%lld corr=%llu delay=%lld\n",
+             sequence, (long long)t4_t1_ns,
+             (unsigned long long)correction_time,
+             (long long)path_delay);
 
       ptp_record_path_delay(state, path_delay);
     }
@@ -1977,6 +2029,11 @@ static int ptp_process_pdelay_resp_followup(
   t3_t2_ns = timespec_delta_ns(&t3, &state->pdelayreq_rx_time);
   path_delay = (t4_t1_ns - t3_t2_ns) / 2;
 
+  _alert("Pdelay_FUP: seq=%d t3=%jd.%09ld t4-t1=%lld "
+         "t3-t2=%lld delay=%lld\n",
+         sequence, (intmax_t)t3.tv_sec, t3.tv_nsec,
+         (long long)t4_t1_ns, (long long)t3_t2_ns, (long long)path_delay);
+
   ptp_record_path_delay(state, path_delay);
 
   return OK;
@@ -2011,7 +2068,7 @@ static int ptp_process_rx_packet(FAR struct ptp_state_s *state,
       return OK;
     }
 
-  ptpinfo("RX PTP: type=0x%02x (masked: 0x%02x), ver=0x%02x, domain=%d, "
+  ptpwarn("RX PTP: type=0x%02x (masked: 0x%02x), ver=0x%02x, domain=%d, "
           "seq=%d, len=%zd\n",
           state->rxbuf.header.messagetype,
           state->rxbuf.header.messagetype & PTP_MSGTYPE_MASK,
@@ -2060,17 +2117,17 @@ static int ptp_process_rx_packet(FAR struct ptp_state_s *state,
         return ptp_process_delay_req(state, &state->rxbuf.delay_req);
 
       case PTP_MSGTYPE_PDELAY_REQ:
-        ptpinfo("Got pdelay req, seq %d\n",
+        ptpwarn("Got pdelay req, seq %d\n",
                 ptp_get_sequence(&state->rxbuf.header));
         return ptp_process_pdelay_req(state, &state->rxbuf.pdelay_req);
 
       case PTP_MSGTYPE_PDELAY_RESP:
-        ptpinfo("Got pdelay resp, seq %d\n",
+        ptpwarn("Got pdelay resp, seq %d\n",
                 ptp_get_sequence(&state->rxbuf.header));
         return ptp_process_pdelay_resp(state, &state->rxbuf.pdelay_resp);
 
       case PTP_MSGTYPE_PDELAY_RESP_FOLLOW_UP:
-        ptpinfo("Got pdelay resp follow-up, seq %d\n",
+        ptpwarn("Got pdelay resp follow-up, seq %d\n",
                 ptp_get_sequence(&state->rxbuf.header));
         return ptp_process_pdelay_resp_followup(
                  state, &state->rxbuf.pdelay_resp_fup);
@@ -2326,9 +2383,9 @@ int ptpd_start(FAR const struct ptpd_config_s *config)
       if (pollfds[0].revents)
         {
 #if defined(CONFIG_NET_TIMESTAMP) && defined(SO_TIMESTAMPING)
-          if ((pollfds[0].revents & (POLLPRI | POLLERR)) != 0)
+          if ((pollfds[0].revents & POLLERR) != 0)
             {
-              char errbuf[64];
+              char errbuf[128];
               char cmsgbuf[128];
               struct msghdr errhdr;
               struct iovec erriov;
@@ -2348,15 +2405,24 @@ int ptpd_start(FAR const struct ptpd_config_s *config)
             }
 #endif
 
-          /* Receive time-critical packet, potentially with cmsg
-           * indicating the timestamp.
+          /* Receive time-critical packet if POLLIN or POLLRDNORM
+           * is signaled.
            */
 
-          ret = recvmsg(state->event_socket, &rxhdr, MSG_DONTWAIT);
-          if (ret > 0)
+          if ((pollfds[0].revents & (POLLIN | POLLRDNORM)) != 0)
             {
-              ptp_getrxtime(state, &rxhdr, &state->rxtime);
-              ptp_process_rx_packet(state, ret);
+              while ((ret = recvmsg(state->event_socket, &rxhdr,
+                                    MSG_DONTWAIT)) > 0)
+                {
+                  ptp_getrxtime(state, &rxhdr, &state->rxtime);
+                  ptp_process_rx_packet(state, ret);
+
+                  rxhdr.msg_namelen    = 0;
+                  rxhdr.msg_iovlen     = 1;
+                  rxhdr.msg_controllen = sizeof(state->rxcmsg);
+                  rxhdr.msg_flags      = 0;
+                  rxiov.iov_len        = sizeof(state->rxbuf);
+                }
             }
         }
 
