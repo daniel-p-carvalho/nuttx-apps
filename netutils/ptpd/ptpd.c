@@ -593,9 +593,6 @@ static int ptp_initialize_state(FAR struct ptp_state_s *state)
           goto errout;
         }
 
-      state->event_socket = dup(state->tx_socket);
-      state->info_socket = -1;
-
       addr.sll_family = AF_PACKET;
       addr.sll_ifindex = if_nametoindex(state->config->interface);
       addr.sll_protocol = htons(ETHERTYPE_PTP);
@@ -606,6 +603,15 @@ static int ptp_initialize_state(FAR struct ptp_state_s *state)
           ptperr("ERROR: binding socket failed: %d\n", errno);
           goto errout;
         }
+
+      state->event_socket = dup(state->tx_socket);
+      if (state->event_socket < 0)
+        {
+          ptperr("Failed to dup event socket: %d\n", errno);
+          goto errout;
+        }
+
+      state->info_socket = -1;
     }
   else if (state->config->af == AF_INET)
     {
@@ -828,11 +834,89 @@ static int ptp_check_multicast_status(FAR struct ptp_state_s *state)
   return OK;
 }
 
+#if defined(CONFIG_NET_TIMESTAMP) && defined(SO_TIMESTAMPING)
+/****************************************************************************
+ * Name: ptp_get_tx_timestamp
+ *
+ * Description:
+ *   Retrieve the hardware TX timestamp delivered via MSG_ERRQUEUE on the
+ *   socket after transmission.
+ *
+ * Input Parameters:
+ *   state - Pointer to PTP daemon state
+ *   tx_ts - Location to return the hardware timestamp
+ *
+ * Returned Value:
+ *   OK on success; ERROR on failure or timeout.
+ *
+ ****************************************************************************/
+
+static int ptp_get_tx_timestamp(FAR struct ptp_state_s *state,
+                                FAR struct timespec *tx_ts)
+{
+  struct pollfd pfd;
+  int ret;
+
+  pfd.fd = state->tx_socket;
+  pfd.events = POLLPRI;
+  pfd.revents = 0;
+
+  ret = poll(&pfd, 1, 50);
+  if (ret > 0 && (pfd.revents & (POLLPRI | POLLERR)) != 0)
+    {
+      char errbuf[64];
+      char cmsgbuf[128];
+      struct msghdr msg;
+      struct iovec iov;
+      FAR struct cmsghdr *cmsg;
+      ssize_t n;
+
+      memset(&msg, 0, sizeof(msg));
+      iov.iov_base = errbuf;
+      iov.iov_len = sizeof(errbuf);
+      msg.msg_iov = &iov;
+      msg.msg_iovlen = 1;
+      msg.msg_control = cmsgbuf;
+      msg.msg_controllen = sizeof(cmsgbuf);
+
+      n = recvmsg(state->tx_socket, &msg, MSG_ERRQUEUE);
+      if (n >= 0)
+        {
+          for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL;
+               cmsg = CMSG_NXTHDR(&msg, cmsg))
+            {
+              if (cmsg->cmsg_level == SOL_SOCKET &&
+                  cmsg->cmsg_type == SO_TIMESTAMPING)
+                {
+                  FAR struct timespec *ts =
+                    (FAR struct timespec *)CMSG_DATA(cmsg);
+
+                  *tx_ts = ts[2];
+                  return OK;
+                }
+            }
+        }
+    }
+
+  return ERROR;
+}
+#endif
+
 static int ptp_sendmsg(FAR struct ptp_state_s *state, FAR const void *buf,
                        size_t buflen, FAR const void *addr,
                        socklen_t addrlen, FAR struct timespec *sendts)
 {
   int ret;
+  struct timespec sw_ts;
+#if defined(CONFIG_NET_TIMESTAMP) && defined(SO_TIMESTAMPING)
+  bool do_hwts = (sendts != NULL && state->config->hardware_ts &&
+                  state->config->af == AF_PACKET);
+#endif
+
+  if (sendts != NULL)
+    {
+      ptp_gettime(state, &sw_ts);
+    }
 
   if (state->config->af == AF_PACKET)
     {
@@ -886,9 +970,48 @@ static int ptp_sendmsg(FAR struct ptp_state_s *state, FAR const void *buf,
       msg.msg_control = NULL;
       msg.msg_controllen = 0;
 
+#if defined(CONFIG_NET_TIMESTAMP) && defined(SO_TIMESTAMPING)
+      if (do_hwts)
+        {
+          char drainbuf[64];
+          char draincmsg[128];
+          struct msghdr drainmsg;
+          struct iovec drainiov;
+          int val;
+
+          memset(&drainmsg, 0, sizeof(drainmsg));
+          drainiov.iov_base = drainbuf;
+          drainiov.iov_len = sizeof(drainbuf);
+          drainmsg.msg_iov = &drainiov;
+          drainmsg.msg_iovlen = 1;
+          drainmsg.msg_control = draincmsg;
+          drainmsg.msg_controllen = sizeof(draincmsg);
+
+          while (recvmsg(state->tx_socket, &drainmsg,
+                         MSG_ERRQUEUE | MSG_DONTWAIT) > 0)
+            {
+            }
+
+          val = SOF_TIMESTAMPING_TX_HARDWARE |
+                SOF_TIMESTAMPING_RAW_HARDWARE;
+          setsockopt(state->tx_socket, SOL_SOCKET, SO_TIMESTAMPING,
+                     &val, sizeof(val));
+        }
+#endif
+
       ret = sendmsg(state->tx_socket, &msg, 0);
       if (ret < 0)
         {
+#if defined(CONFIG_NET_TIMESTAMP) && defined(SO_TIMESTAMPING)
+          if (do_hwts)
+            {
+              int val = 0;
+
+              setsockopt(state->tx_socket, SOL_SOCKET, SO_TIMESTAMPING,
+                         &val, sizeof(val));
+            }
+
+#endif
           return ERROR;
         }
     }
@@ -899,7 +1022,25 @@ static int ptp_sendmsg(FAR struct ptp_state_s *state, FAR const void *buf,
 
   if (sendts != NULL)
     {
-      ptp_gettime(state, sendts);
+#if defined(CONFIG_NET_TIMESTAMP) && defined(SO_TIMESTAMPING)
+      if (do_hwts)
+        {
+          int val = 0;
+
+          if (ptp_get_tx_timestamp(state, sendts) != OK)
+            {
+              ptpwarn("Hardware TX timestamp timed out, falling back\n");
+              *sendts = sw_ts;
+            }
+
+          setsockopt(state->tx_socket, SOL_SOCKET, SO_TIMESTAMPING,
+                     &val, sizeof(val));
+        }
+      else
+#endif
+        {
+          *sendts = sw_ts;
+        }
     }
 
   return ret;
@@ -1552,8 +1693,13 @@ static void ptp_record_path_delay(FAR struct ptp_state_s *state,
       max_path_delay = 10 * (int64_t)NSEC_PER_MSEC;
     }
 
-  if (path_delay >= 0 && path_delay < max_path_delay)
+  if (path_delay >= -100000 && path_delay < max_path_delay)
     {
+      if (path_delay < 0)
+        {
+          path_delay = 0;
+        }
+
       if (state->path_delay_avgcount <
           CONFIG_NETUTILS_PTPD_DELAYREQ_AVGCOUNT)
         {
@@ -1730,6 +1876,7 @@ static int ptp_process_pdelay_resp(FAR struct ptp_state_s *state,
   if (memcmp(msg->reqidentity, state->own_identity.header.sourceidentity,
              sizeof(msg->reqidentity)) != 0)
     {
+      ptpwarn("Pdelay_Resp ignored: req identity mismatch\n");
       return OK; /* Not for us */
     }
 
@@ -1805,6 +1952,7 @@ static int ptp_process_pdelay_resp_followup(
   if (memcmp(msg->reqidentity, state->own_identity.header.sourceidentity,
              sizeof(msg->reqidentity)) != 0)
     {
+      ptpwarn("Pdelay_Resp_Follow_Up ignored: req identity mismatch\n");
       return OK;
     }
 
@@ -2177,6 +2325,29 @@ int ptpd_start(FAR const struct ptpd_config_s *config)
 
       if (pollfds[0].revents)
         {
+#if defined(CONFIG_NET_TIMESTAMP) && defined(SO_TIMESTAMPING)
+          if ((pollfds[0].revents & (POLLPRI | POLLERR)) != 0)
+            {
+              char errbuf[64];
+              char cmsgbuf[128];
+              struct msghdr errhdr;
+              struct iovec erriov;
+
+              memset(&errhdr, 0, sizeof(errhdr));
+              erriov.iov_base = errbuf;
+              erriov.iov_len = sizeof(errbuf);
+              errhdr.msg_iov = &erriov;
+              errhdr.msg_iovlen = 1;
+              errhdr.msg_control = cmsgbuf;
+              errhdr.msg_controllen = sizeof(cmsgbuf);
+
+              while (recvmsg(state->event_socket, &errhdr,
+                             MSG_ERRQUEUE | MSG_DONTWAIT) > 0)
+                {
+                }
+            }
+#endif
+
           /* Receive time-critical packet, potentially with cmsg
            * indicating the timestamp.
            */
